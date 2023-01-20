@@ -1,0 +1,275 @@
+ const parameter = {
+    amount: props.route.params.Amount,
+  };
+  const initiateAmount = async () => {
+    setIsLoaderVisible(true);
+    try {
+      const response = await NetworkManager.fetchRequest(
+        URL.END_POINT.initiate_add_Wallet,
+        URL.REQUEST_TYPE.postRequest,
+        parameter,
+      );
+      if (response.code === 200) {
+        setData(response.data);
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+
+props.navigation.navigate('payPal', {
+        Amount,
+      });
+      setAmount('');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import React, {Component} from 'react';
+import {View, Text, SafeAreaView, Buffer} from 'react-native';
+import {Loader, Header} from '../../componet/index';
+import axios from 'axios';
+import WebView from 'react-native-webview';
+import CustomBase64 from '../../componet/paypal/CustomBase64';
+import {
+  Colors,
+  Assets,
+  Strings,
+  GlobalStyle,
+  URL,
+  Fonts,
+} from '../../res/index';
+
+export default class PaypalScreen extends Component {
+  addAmount = props.route.params.Amount;
+  constructor(props) {
+    super(props);
+  }
+
+  state = {
+    accessToken: null,
+    approvalUrl: null,
+    paymentId: null,
+    executeUrl: null,
+    amount: addAmount,
+  };
+
+  componentDidMount() {
+    let basePaymentUrl = 'https://api-m.sandbox.paypal.com/v1/';
+    let username =
+      'ARDY2LK4GotrJa2XB9p4gkBgO71QSajbqpFij50pCrcWuzx7ufP7DM38CCvSZUxgCJJlJjN8m0dL6q-d';
+    let password =
+      'ED1qgrr0KTZtfuzfS86a7aKQeKelgrVnR_W5d_CzgHuY2UsMAUPFSVJGlBsuhtZuF0zOaPF4toZILlaI';
+
+    let headers = new Headers();
+    
+
+    //headers.append('Content-Type', 'text/json');
+    headers.append(
+      'Authorization',
+      'Basic ' + CustomBase64.btoa(username + ':' + password),
+    );
+
+    var raw = 'grant_type=client_credentials';
+
+    var requestOptions = {
+      method: 'POST',
+      headers: headers,
+      body: raw,
+      redirect: 'follow',
+    };
+    fetch(basePaymentUrl + 'oauth2/token', requestOptions)
+      .then(response => response.json())
+      .then(result => {
+        // console.log(':::::', JSON.stringify(result, null, 2));
+        this.setState({accessToken: result?.access_token});
+        if (this.state.accessToken) {
+          axios
+            .post(
+              `${basePaymentUrl}payments/payment`,
+              {
+                intent: 'sale',
+                payer: {
+                  payment_method: 'paypal',
+                },
+                transactions: [
+                  {
+                    amount: {
+                      total: this.state.amount,
+                      currency: 'USD',
+                    },
+                  },
+                ],
+                redirect_urls: {
+                  return_url: 'https://example.com/return',
+                  cancel_url: 'https://example.com/cancel',
+                },
+              },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${this.state.accessToken}`,
+                },
+              },
+            )
+            .then(response => {
+              const {id, links} = response.data;
+              // const approvalUrl =
+              this.setState({
+                approvalUrl: links.find(data => data.rel == 'approval_url')
+                  .href,
+              });
+              // const executeUrl = ;
+              this.setState({
+                executeUrl: links.find(data => data.rel == 'execute').href,
+              });
+
+              // // console.log('response', JSON.stringify(links, null, 2));
+            })
+            .catch(err => {
+              console.log(JSON.stringify(err, null, 2));
+            });
+        }
+      })
+      .catch(err => console.log(err));
+  }
+
+  addAmount_parameter = {
+    amount: this.state.amount,
+    ref_number: this.state.paymentId,
+    req_data: [],
+  };
+  addAmountToWallet = async () => {
+    console.log(this.state.paymentId);
+    try {
+      const response = await NetworkManager.fetchRequest(
+        URL.END_POINT.initiate_Payment,
+        URL.REQUEST_TYPE.postRequest,
+        this.addAmount_parameter,
+      );
+      if (response.code === 200) {
+        this.props.navigation.navigate('wallet');
+      }
+      console.log(response);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  _onNavigationStateChange = async webViewState => {
+    if (webViewState.url.includes('https://example.com')) {
+      const newUrl = webViewState.url
+        .split('?')[1]
+        .split('&')
+        .map(item => item.split('='));
+      console.log(':::::', newUrl);
+      if (newUrl.length <= 1) {
+        this.props.navigation.replace('wallet');
+      } else {
+        const payer_id = newUrl[2][1];
+
+        var raw1 = JSON.stringify({
+          payer_id: payer_id,
+        });
+
+        var requestOptions22 = {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.state.accessToken}`,
+          },
+          body: raw1,
+          redirect: 'follow',
+        };
+        fetch(this.state.executeUrl, requestOptions22)
+          .then(response => response.json())
+          .then(res => {
+            if (res.id != null) {
+            }
+          })
+          .catch(error => {
+            console.log('error', error);
+            this.setState({
+              approvalUrl: null,
+            });
+          });
+      }
+    }
+  };
+  componentWillUnmount() {
+    this.setState({
+      approvalUrl: null,
+    });
+  }
+  render() {
+    const {approvalUrl} = this.state;
+    return (
+      <SafeAreaView style={{flex: 1}}>
+        {approvalUrl ? (
+          <WebView
+            style={{height: 600, width: 400}}
+            source={{uri: approvalUrl}}
+            onNavigationStateChange={this._onNavigationStateChange}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            startInLoadingState={false}
+          />
+        ) : (
+          <View style={{flex: 1, justifyContent: 'center'}}>
+            <Text
+              style={{
+                color: 'black',
+                fontSize: 20,
+                alignSelf: 'center',
+                paddingBottom: 80,
+              }}>
+              Do not press back or refresh page
+            </Text>
+            <Loader />
+          </View>
+        )}
+      </SafeAreaView>
+    );
+  }
+}
+
+// const add_parameter = {
+//   amount: Amount,
+//   ref_number: 'AHGGSDFTHS1234',
+//   req_data: [{abc: 'hello'}],
+// };
+
+// try {
+//   const response = await NetworkManager.fetchRequest(
+//     URL.END_POINT.initiate_Payment,
+//     URL.REQUEST_TYPE.postRequest,
+//     add_parameter,
+//   );
+//   console.log(response);
+// } catch (error) {
+//   console.log(error);
+// }
